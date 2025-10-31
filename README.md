@@ -13,15 +13,29 @@ Instead of scrolling through endless chat logs, Thrx lets you **see conversation
 Whether you’re building an AI chat app, a collaborative note system, or a knowledge engine — Thrx provides the foundation.
 
 ---
+<img width="981" height="666" alt="image" src="https://github.com/user-attachments/assets/4afd5a37-a4b8-44c2-9f9a-9837aba73a73" />
 
-## Features
+### Concept (for README or docs)
 
-- **Node-Based Chat UI** — built with [React Flow](https://reactflow.dev/)
-- **Local AI Inference** — powered by [Ollama](https://ollama.ai/) and lightweight models like `phi3:mini`
-- **Context Flow Engine** — navigate and branch conversations visually
-- **Memory System** — start with in-memory storage, extendable to Postgres
-- **Modular Backend** — Node.js API designed to easily swap local or remote LLMs
-- **Open Source** — MIT licensed, built for collaboration
+When the user **selects any part of the text** in the chat or graph view:
+
+- A **hover tooltip** appears with two options:
+  - **Follow up:** continues the conversation linearly in the current thread.
+  - **Create Branch:** spawns a **new chat branch** (visually represented as a new node in the graph).
+
+Each branch becomes its own node in the **Graph Viewer**, maintaining parent-child links so users can navigate their exploration paths visually — like “conversation forking” in a knowledge graph.
+
+---
+
+###Implementation Concept (React Flow + React)
+
+Here’s the functional breakdown you’d build into `Thrx`:
+
+1. **Text Selection Listener** → detects user-highlighted text.
+2. **Tooltip Component** → shows “Follow up” / “Create Branch” actions near the selection.
+3. **Branch Manager Hook** → handles adding a new node to the React Flow graph and linking it.
+4. **Graph Viewer** → updates live with new nodes and edges representing chat flows.
+5. **Persistence Layer** → stores conversation structure (like a tree) in local storage or a backend (e.g., Supabase / Postgres).
 
 ---
 
@@ -37,7 +51,7 @@ Whether you’re building an AI chat app, a collaborative note system, or a know
 
 ---
 
-## etting Started
+## Setting Started
 
 ### 1. Clone the Repository
 ```bash
