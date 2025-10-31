@@ -15,7 +15,7 @@ Whether you’re building an AI chat app, a collaborative note system, or a know
 ---
 <img width="981" height="666" alt="image" src="https://github.com/user-attachments/assets/4afd5a37-a4b8-44c2-9f9a-9837aba73a73" />
 
-### Concept (for README or docs)
+### Concept
 
 When the user **selects any part of the text** in the chat or graph view:
 
