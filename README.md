@@ -5,7 +5,7 @@
 
 ---
 
-## 🌟 Overview
+## Overview
 
 **Thrx** reimagines how conversations are represented.  
 Instead of scrolling through endless chat logs, Thrx lets you **see conversations as connected nodes** — each message, branch, and idea becomes part of a dynamic, visual flow.
@@ -14,18 +14,18 @@ Whether you’re building an AI chat app, a collaborative note system, or a know
 
 ---
 
-## 🧩 Features
+## Features
 
-- 🌐 **Node-Based Chat UI** — built with [React Flow](https://reactflow.dev/)
-- 🧠 **Local AI Inference** — powered by [Ollama](https://ollama.ai/) and lightweight models like `phi3:mini`
-- 🔁 **Context Flow Engine** — navigate and branch conversations visually
-- 💾 **Memory System** — start with in-memory storage, extendable to Postgres
-- ⚙️ **Modular Backend** — Node.js API designed to easily swap local or remote LLMs
-- 🧍 **Open Source** — MIT licensed, built for collaboration
+- **Node-Based Chat UI** — built with [React Flow](https://reactflow.dev/)
+- **Local AI Inference** — powered by [Ollama](https://ollama.ai/) and lightweight models like `phi3:mini`
+- **Context Flow Engine** — navigate and branch conversations visually
+- **Memory System** — start with in-memory storage, extendable to Postgres
+- **Modular Backend** — Node.js API designed to easily swap local or remote LLMs
+- **Open Source** — MIT licensed, built for collaboration
 
 ---
 
-## 🏗️ Tech Stack
+## Tech Stack
 
 | Layer | Technology |
 |-------|-------------|
@@ -37,7 +37,7 @@ Whether you’re building an AI chat app, a collaborative note system, or a know
 
 ---
 
-## 🚀 Getting Started
+## etting Started
 
 ### 1. Clone the Repository
 ```bash
