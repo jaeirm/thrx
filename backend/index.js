@@ -10,25 +10,42 @@ app.post("/api/chat", async (req, res) => {
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: "Message required" });
 
-  // Set headers for streaming
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
 
-  const ollama = spawn("ollama", ["run", "phi3:mini"], { stdio: ["pipe", "pipe", "inherit"] });
+  const ollama = spawn("ollama", ["run", "phi3:mini"], {
+    stdio: ["pipe", "pipe", "inherit"],
+  });
 
-  // Write the user prompt to Ollama
   ollama.stdin.write(message + "\n");
   ollama.stdin.end();
 
-  // Stream Ollama output as it arrives
+  let buffer = "";
+
   ollama.stdout.on("data", (chunk) => {
-    const text = chunk.toString();
-    res.write(`data: ${text}\n\n`);
+    buffer += chunk.toString();
+
+    // ✅ Detect sentence or word boundary
+    const sentences = buffer.split(/(?<=[.!?])\s+|\n+/);
+
+    // Keep last incomplete sentence in buffer
+    buffer = sentences.pop() || "";
+
+    for (const sentence of sentences) {
+      res.write(`data: ${sentence.trim()}\n\n`);
+      res.flush?.();
+    }
   });
 
   ollama.on("close", () => {
+    // Flush any remaining partial text
+    if (buffer.trim()) {
+      res.write(`data: ${buffer.trim()}\n\n`);
+    }
     res.write("data: [DONE]\n\n");
+    res.flush?.();
     res.end();
   });
 
@@ -39,4 +56,6 @@ app.post("/api/chat", async (req, res) => {
   });
 });
 
-app.listen(5000, () => console.log("Streaming server running on http://localhost:5000"));
+app.listen(5000, () =>
+  console.log("✅ Streaming server running on http://localhost:5000")
+);
