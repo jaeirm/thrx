@@ -16,6 +16,7 @@ export interface Message {
     model?: string;
     attachments?: Attachment[];
     replyTo?: string;
+    parentId?: string;
 }
 
 export interface Chat {
@@ -23,6 +24,8 @@ export interface Chat {
     created_at: string;
     title: string;
     user_id?: string;
+    parentId?: string; // For grouping in sidebar
+    rootMessageId?: string; // The message it branched from
 }
 
 export type ModelType =

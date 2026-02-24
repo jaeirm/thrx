@@ -4,26 +4,36 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { MessageBubble } from './MessageBubble';
 import { InputArea } from './InputArea';
-import { Menu, Zap, Settings } from 'lucide-react';
 import { Chat, Message, Attachment, ModelType } from '@/types';
 import { ModelSelector } from './ModelSelector';
+import { NodeGraph } from './NodeGraph';
 import { useChatStorage } from '@/hooks/useChatStorage';
 import { useLocalLLM } from '@/hooks/useLocalLLM';
 import { EmptyState } from './EmptyState';
 import { ModelDrawer } from './ModelDrawer';
 import { TextSelectionTooltip } from './TextSelectionTooltip';
 import { LocalModelStatus } from './LocalModelStatus';
+import { BranchDrawer } from './BranchDrawer';
 import { shouldPerformSearch, analyzeQuery } from '@/lib/searchUtils';
+import { cn } from '@/lib/utils';
+import { Menu, Zap, Settings, MessageSquare, Map as MapIcon, GitBranch, Quote, Share2, ChevronRight } from 'lucide-react';
 
 export const ChatInterface = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentChatId, setCurrentChatId] = useState<string | undefined>(undefined);
-    const [messages, setMessages] = useState<Message[]>([]);
+    const [allMessages, setAllMessages] = useState<Message[]>([]);
+    const [mainActiveMessageId, setMainActiveMessageId] = useState<string | null>(null);
+    const [branchActiveMessageId, setBranchActiveMessageId] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [currentModel, setCurrentModel] = useState<ModelType>('gemini-2.5-flash');
     const [isModelDrawerOpen, setIsModelDrawerOpen] = useState(false);
+    const [isBranchDrawerOpen, setIsBranchDrawerOpen] = useState(false);
+    const [branchPointId, setBranchPointId] = useState<string | null>(null);
     const [inputContent, setInputContent] = useState('');
+    const [branchInputContent, setBranchInputContent] = useState('');
     const [replyingTo, setReplyingTo] = useState<string | null>(null);
+    const [branchReplyingTo, setBranchReplyingTo] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'chat' | 'graph'>('chat');
     const [showLocalStatus, setShowLocalStatus] = useState(false);
     const [isSearchEnabled, setIsSearchEnabled] = useState(true);
     const abortControllerRef = React.useRef<AbortController | null>(null);
@@ -32,6 +42,48 @@ export const ChatInterface = () => {
     const { chats, saveChat, loadMessages, deleteChat, clearAllChats } = useChatStorage();
     const { isModelLoading, progress, progressText, logs, loadModel, generate: generateLocal, interrupt: interruptLocal } = useLocalLLM();
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
+
+    const getTrail = (targetId: string | null) => {
+        if (!targetId) return [];
+        const trail: Message[] = [];
+        let curr: Message | undefined = allMessages.find(m => m.id === targetId);
+        while (curr) {
+            trail.unshift(curr);
+            curr = allMessages.find(m => m.id === curr?.parentId);
+        }
+        return trail;
+    };
+
+    // Filter messages to show only the trail to the active message
+    const messages = React.useMemo(() => {
+        const targetId = mainActiveMessageId;
+        if (!targetId) {
+            // If no active message, but we have messages, default to the latest leaf
+            if (allMessages.length > 0) {
+                // Find all messages that are NOT parents of anyone
+                const parentIds = new Set(allMessages.map(m => m.parentId).filter(Boolean));
+                const leaves = allMessages.filter(m => !parentIds.has(m.id));
+                // Sort leaves by date and pick latest
+                const latestLeaf = leaves.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+                return getTrail(latestLeaf?.id || null);
+            }
+            return [];
+        }
+
+        return getTrail(targetId);
+    }, [allMessages, mainActiveMessageId]);
+
+    const branchMessages = React.useMemo(() => {
+        if (!isBranchDrawerOpen || !branchPointId || !branchActiveMessageId) return [];
+
+        // Trace from branchActiveMessageId back to branchPointId (exclusive)
+        const fullTrail = getTrail(branchActiveMessageId);
+        const branchPointIndex = fullTrail.findIndex(m => m.id === branchPointId);
+
+        if (branchPointIndex === -1) return fullTrail;
+        return fullTrail.slice(branchPointIndex + 1);
+    }, [allMessages, branchActiveMessageId, isBranchDrawerOpen, branchPointId]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,10 +101,15 @@ export const ChatInterface = () => {
                 return;
             }
             loadMessages(currentChatId).then(msgs => {
-                setMessages(msgs);
+                setAllMessages(msgs);
+                // Reset active message to latest leaf on chat change
+                setMainActiveMessageId(null);
+                setBranchActiveMessageId(null);
             });
         } else {
-            setMessages([]);
+            setAllMessages([]);
+            setMainActiveMessageId(null);
+            setBranchActiveMessageId(null);
         }
     }, [currentChatId, loadMessages]);
 
@@ -107,7 +164,27 @@ export const ChatInterface = () => {
         setIsLoading(false);
     };
 
-    const handleSendMessage = async (content: string, attachments: Attachment[]) => {
+    const handleBranch = (text: string, messageId?: string) => {
+        if (messageId) {
+            setBranchPointId(messageId);
+            setBranchActiveMessageId(messageId);
+        } else {
+            const lastId = messages[messages.length - 1]?.id || null;
+            setBranchPointId(lastId);
+            setBranchActiveMessageId(lastId);
+        }
+        setBranchReplyingTo(text);
+        setIsBranchDrawerOpen(true);
+    };
+
+    const handleQuote = (text: string, messageId?: string) => {
+        if (messageId) {
+            setMainActiveMessageId(messageId);
+        }
+        setReplyingTo(text);
+    };
+
+    const handleSendMessage = async (content: string, attachments: Attachment[], customReplyTo?: string | null) => {
         if (!content.trim() && attachments.length === 0) return;
 
         // UI Content: Clean (no "Referring to..." prefix)
@@ -117,26 +194,54 @@ export const ChatInterface = () => {
         let chatId = currentChatId;
         let newChatCreated = false;
 
-        if (!chatId) {
+        // BRANCHING LOGIC: If sending from drawer, create a NEW sub-chat
+        if (customReplyTo !== undefined && chatId) {
+            const newBranchChatId = Date.now().toString();
+            const newBranchChat: Chat = {
+                id: newBranchChatId,
+                title: content.slice(0, 30) + (content.length > 30 ? '...' : ''),
+                created_at: new Date().toISOString(),
+                parentId: chatId,
+                rootMessageId: branchPointId || undefined
+            };
+
+            // Ancestors path to branch from
+            const ancestors = getTrail(branchPointId);
+
+            // Promotion: This branch is now its own Chat session
+            await saveChat(newBranchChat, ancestors);
+
+            // ENVIRONMENT ISOLATION: Prune the local state to just this path
+            setAllMessages(ancestors);
+            setMainActiveMessageId(branchPointId);
+            setBranchActiveMessageId(null);
+
+            // Switch to the new session
+            skipNextLoadRef.current = true;
+            setCurrentChatId(newBranchChatId);
+            chatId = newBranchChatId;
+            newChatCreated = true;
+
+            // Close the drawer as it's now promoted to main view
+            setIsBranchDrawerOpen(false);
+        } else if (!chatId) {
             chatId = Date.now().toString();
             skipNextLoadRef.current = true;
             setCurrentChatId(chatId);
             newChatCreated = true;
 
-            // Create the new chat object
             const newChat: Chat = {
                 id: chatId,
-                title: content.slice(0, 30) + (content.length > 30 ? '...' : ''), // Simple logic for now
+                title: content.slice(0, 30) + (content.length > 30 ? '...' : ''),
                 created_at: new Date().toISOString()
             };
 
-            // We'll save it at the end of this flow or via the useEffect, 
-            // but we need to update the hook state effectively. 
-            // The useEffect will catch the message update and save it, 
-            // BUT we need the chat object to exist in the `chats` array for the useEffect logic `chats.find` to work.
-            // So we explicitly save it here first.
             saveChat(newChat, []);
         }
+
+        const parentId = ((customReplyTo !== undefined)
+            ? branchActiveMessageId
+            : (messages[messages.length - 1]?.id)) || undefined;
 
         const userMsg: Message = {
             id: Date.now().toString(),
@@ -145,26 +250,43 @@ export const ChatInterface = () => {
             created_at: new Date().toISOString(),
             chat_id: chatId,
             attachments,
-            replyTo: replyingTo || undefined // Explicit metadata
+            replyTo: (customReplyTo !== undefined ? customReplyTo : replyingTo) || undefined, // Explicit metadata
+            parentId: parentId
         };
 
         // Clear reply state
-        setReplyingTo(null);
+        if (customReplyTo !== undefined) {
+            setBranchReplyingTo(null);
+        } else {
+            setReplyingTo(null);
+        }
 
         // Optimistic update
-        setMessages(prev => [...prev, userMsg]);
+        setAllMessages(prev => [...prev, userMsg]);
+        if (customReplyTo !== undefined) {
+            setBranchActiveMessageId(userMsg.id);
+        } else {
+            setMainActiveMessageId(userMsg.id);
+        }
         setIsLoading(true);
 
         const aiMsgId = (Date.now() + 1).toString();
         // Placeholder for AI
-        setMessages(prev => [...prev, {
+        const aiMsg: Message = {
             id: aiMsgId,
             role: 'assistant',
             content: '',
             created_at: new Date().toISOString(),
             chat_id: chatId,
-            model: currentModel
-        }]);
+            model: currentModel,
+            parentId: userMsg.id
+        };
+        setAllMessages(prev => [...prev, aiMsg]);
+        if (customReplyTo !== undefined) {
+            setBranchActiveMessageId(aiMsgId);
+        } else {
+            setMainActiveMessageId(aiMsgId);
+        }
 
         // Handle attachments for local model compatibility (if needed) or just pass them through
         // Currently useLocalLLM assumes text mostly, but we can extend later.
@@ -270,7 +392,7 @@ ${compressedContext}`;
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        messages: [...messages, { ...userMsg, content: aiPromptContent }].map(m => ({
+                        messages: [...getTrail(parentId || null), { ...userMsg, content: aiPromptContent }].map(m => ({
                             role: m.role,
                             content: m.content,
                             attachments: m.attachments // Pass attachments to API
@@ -292,43 +414,47 @@ ${compressedContext}`;
                     const text = decoder.decode(value, { stream: true });
                     aiContent += text;
 
-                    setMessages(prev => prev.map(msg =>
+                    setAllMessages(prev => prev.map(msg =>
                         msg.id === aiMsgId ? { ...msg, content: aiContent } : msg
                     ));
                 }
+
+                // Save complete chat after generation
+                const currentChatObj = chats.find(c => c.id === chatId) || { id: chatId, title: 'New Chat', created_at: new Date().toISOString() };
+                const latestAllMessages = await new Promise<Message[]>(resolve => {
+                    setAllMessages(prev => {
+                        resolve(prev);
+                        return prev;
+                    });
+                });
+                await saveChat(currentChatObj, latestAllMessages);
+                console.log("[Storage] AI response saved.");
+
             } else {
                 // Local Generation
                 // Use explicit prompt construction for history
-                let history = [...messages, { ...userMsg, content: aiPromptContent }];
+                let history = [...getTrail(parentId || null), { ...userMsg, content: aiPromptContent }];
                 let generatedText = "";
 
-                // Persist User Message BEFORE sending (as requested)
-                // We use the current state 'messages' + userMsg
-                // Note: 'messages' state might not be updated yet in this closure, so we rely on 'history' excluding the last AI placeholder?
-                // Actually 'history' here has the AI inputs.
-                // We want to save [old_messages + userMsg] to DB.
-                const messagesToSave = [...messages, userMsg];
+                // Persist Current State BEFORE sending
                 const currentChatObj = chats.find(c => c.id === chatId) || { id: chatId, title: 'New Chat', created_at: new Date().toISOString() };
-                await saveChat(currentChatObj, messagesToSave);
+                await saveChat(currentChatObj, [...allMessages, userMsg, aiMsg]);
 
                 console.log("[Storage] User message saved before generation.");
 
                 await generateLocal(history, currentModel, (text) => {
                     generatedText = text;
-                    setMessages(prev => prev.map(msg =>
+                    setAllMessages(prev => prev.map(msg =>
                         msg.id === aiMsgId ? { ...msg, content: text } : msg
                     ));
                 });
 
                 // Save complete chat after generation
-                await saveChat(currentChatObj, [...messagesToSave, {
-                    id: aiMsgId,
-                    role: 'assistant',
-                    content: generatedText,
-                    created_at: new Date().toISOString(),
-                    chat_id: chatId,
-                    model: currentModel
-                }]);
+                setAllMessages(prev => {
+                    const updated = prev.map(msg => msg.id === aiMsgId ? { ...msg, content: generatedText } : msg);
+                    saveChat(currentChatObj, updated);
+                    return updated;
+                });
                 console.log("[Storage] AI response saved.");
 
                 // 6. Optional Uncertainty Fallback
@@ -343,7 +469,7 @@ ${compressedContext}`;
                     console.log("[Fallback] Refusal detected -> Triggering Emergency Search");
 
                     // Update UI to show we are falling back
-                    setMessages(prev => prev.map(msg =>
+                    setAllMessages(prev => prev.map(msg =>
                         msg.id === aiMsgId ? { ...msg, content: generatedText + "\n\n*[Auto-Fallback: Browsing web for real-time info...]*" } : msg
                     ));
 
@@ -352,24 +478,27 @@ ${compressedContext}`;
                     if (fallbackContext) {
                         // Regenerate with new context
                         aiPromptContent = fallbackContext;
-                        history = [...messages, { ...userMsg, content: aiPromptContent }];
+                        history = [...getTrail(parentId || null), { ...userMsg, content: aiPromptContent }];
 
                         await generateLocal(history, currentModel, (text) => {
-                            setMessages(prev => prev.map(msg =>
-                                msg.id === aiMsgId ? { ...msg, content: text } : msg
-                            ));
+                            setAllMessages(prev => {
+                                const updated = prev.map(msg => msg.id === aiMsgId ? { ...msg, content: text } : msg);
+                                saveChat(currentChatObj, updated);
+                                return updated;
+                            });
                         });
                     }
                 }
             }
         } catch (error) {
             console.error(error);
-            setMessages(prev => [...prev, {
+            setAllMessages(prev => [...prev, {
                 id: Date.now().toString(),
                 role: 'system',
                 content: 'Error: Failed to get response from AI. ' + (error as any).message,
                 created_at: new Date().toISOString(),
-                chat_id: currentChatId || 'temp'
+                chat_id: currentChatId || 'temp',
+                parentId: aiMsgId
             }]);
         } finally {
             setIsLoading(false);
@@ -389,13 +518,17 @@ ${compressedContext}`;
                 onSelectChat={setCurrentChatId}
                 onNewChat={() => {
                     setCurrentChatId(undefined);
-                    setMessages([]);
+                    setAllMessages([]);
+                    setMainActiveMessageId(null);
+                    setBranchActiveMessageId(null);
                     setIsSidebarOpen(false);
                 }}
                 onClearChats={() => {
                     clearAllChats();
                     setCurrentChatId(undefined);
-                    setMessages([]);
+                    setAllMessages([]);
+                    setMainActiveMessageId(null);
+                    setBranchActiveMessageId(null);
                     setIsSidebarOpen(false);
                 }}
             />
@@ -403,13 +536,51 @@ ${compressedContext}`;
             <div className="flex-1 flex flex-col h-full w-full relative z-10">
                 {/* Custom Thrx Header */}
                 <header className="h-16 flex items-center justify-between px-6 sticky top-0 z-30 bg-background/0">
-                    <div className="text-blue-500 font-bold text-3xl tracking-tight">Thrx</div>
-                    <button
-                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                        className="p-2 text-muted-foreground hover:text-white transition-colors"
-                    >
-                        <Menu size={24} />
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <div className="text-blue-500 font-bold text-3xl tracking-tight">Thrx</div>
+                        {currentChatId && (
+                            <div className="flex items-center gap-2 text-muted-foreground/60">
+                                <ChevronRight size={16} />
+                                <span className="text-sm font-medium truncate max-w-[200px]">
+                                    {chats.find(c => c.id === currentChatId)?.title || "Branch"}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                            className="p-2 text-muted-foreground hover:text-white transition-colors"
+                        >
+                            <Menu size={24} />
+                        </button>
+
+                        {/* View Toggle */}
+                        {currentChatId && (
+                            <div className="flex items-center bg-secondary/30 rounded-full p-1 border border-white/5">
+                                <button
+                                    onClick={() => setViewMode('chat')}
+                                    className={cn(
+                                        "p-1.5 rounded-full transition-all flex items-center gap-2 px-3",
+                                        viewMode === 'chat' ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-white"
+                                    )}
+                                >
+                                    <MessageSquare size={14} />
+                                    <span className="text-xs font-medium">Chat</span>
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('graph')}
+                                    className={cn(
+                                        "p-1.5 rounded-full transition-all flex items-center gap-2 px-3",
+                                        viewMode === 'graph' ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-white"
+                                    )}
+                                >
+                                    <MapIcon size={14} />
+                                    <span className="text-xs font-medium">Map</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
 
 
 
@@ -427,33 +598,60 @@ ${compressedContext}`;
                 </header>
 
                 {/* Messages Area */}
-                {/* Messages Area */}
                 <main className="flex-1 flex flex-col relative overflow-hidden">
-                    <div className="flex-1 overflow-y-auto px-4 w-full scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                        <div className="max-w-3xl mx-auto py-6">
-                            {messages.length === 0 ? (
-                                <div className="h-full flex items-center justify-center min-h-[50vh]">
-                                    <EmptyState onChipClick={(text) => handleSendMessage(text, [])} />
-                                </div>
-                            ) : (
-                                <div className="space-y-6 pb-32">
-                                    {messages.map(msg => (
-                                        <MessageBubble
-                                            key={msg.id}
-                                            message={msg}
-                                            onViewLogs={() => setShowLocalStatus(true)}
-                                        />
-                                    ))}
-                                    {isLoading && messages[messages.length - 1]?.role === 'user' && (
-                                        <div className="flex justify-start animate-pulse pl-4 opacity-50 text-sm italic">
-                                            Generating response...
-                                        </div>
-                                    )}
-                                    <div ref={messagesEndRef} />
-                                </div>
-                            )}
+                    {viewMode === 'chat' ? (
+                        <div className="flex-1 overflow-y-auto px-4 w-full scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                            <div className="max-w-3xl mx-auto py-6">
+                                {messages.length === 0 ? (
+                                    <div className="h-full flex items-center justify-center min-h-[50vh]">
+                                        <EmptyState onChipClick={(text) => handleSendMessage(text, [])} />
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6 pb-32">
+                                        {messages.map((msg, index) => {
+                                            // Count siblings and identify current branch index
+                                            const siblings = allMessages.filter(m => m.parentId === msg.parentId);
+                                            const currentBranchIndex = siblings.findIndex(m => m.id === msg.id);
+                                            const totalBranches = siblings.length;
+
+                                            return (
+                                                <MessageBubble
+                                                    key={msg.id}
+                                                    message={msg}
+                                                    onViewLogs={() => setShowLocalStatus(true)}
+                                                    branchInfo={totalBranches > 1 ? {
+                                                        currentIndex: currentBranchIndex,
+                                                        total: totalBranches,
+                                                        onNavigate: (direction: 'prev' | 'next') => {
+                                                            const newIndex = direction === 'next' ? currentBranchIndex + 1 : currentBranchIndex - 1;
+                                                            if (newIndex >= 0 && newIndex < totalBranches) {
+                                                                setMainActiveMessageId(siblings[newIndex].id);
+                                                            }
+                                                        }
+                                                    } : undefined}
+                                                />
+                                            );
+                                        })}
+                                        {isLoading && messages[messages.length - 1]?.role === 'user' && (
+                                            <div className="flex justify-start animate-pulse pl-4 opacity-50 text-sm italic">
+                                                Generating response...
+                                            </div>
+                                        )}
+                                        <div ref={messagesEndRef} />
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <NodeGraph
+                            chats={chats}
+                            currentChatId={currentChatId}
+                            onSelectChat={(id) => {
+                                setCurrentChatId(id);
+                                setViewMode('chat'); // Switch back to chat view on select
+                            }}
+                        />
+                    )}
                 </main>
 
                 {/* Footer Input Area */}
@@ -482,7 +680,25 @@ ${compressedContext}`;
                     onModelSelect={handleModelSelect}
                 />
 
-                <TextSelectionTooltip onQuote={(text) => setReplyingTo(text)} />
+                <TextSelectionTooltip
+                    onQuote={handleQuote}
+                    onBranch={handleBranch}
+                />
+
+                <BranchDrawer
+                    isOpen={isBranchDrawerOpen}
+                    onClose={() => setIsBranchDrawerOpen(false)}
+                    messages={branchMessages}
+                    onSendMessage={(content, attachments) => handleSendMessage(content, attachments, branchReplyingTo)}
+                    isLoading={isLoading}
+                    currentModel={currentModel}
+                    onModelClick={() => setIsModelDrawerOpen(true)}
+                    replyingTo={branchReplyingTo}
+                    onCancelReply={() => setBranchReplyingTo(null)}
+                    inputContent={branchInputContent}
+                    setInputContent={setBranchInputContent}
+                    onStop={handleStop}
+                />
 
                 <LocalModelStatus
                     isOpen={showLocalStatus}

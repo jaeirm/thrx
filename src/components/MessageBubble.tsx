@@ -3,15 +3,21 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { Message } from '@/types';
-import { Bot, User, Cpu, Eye, Quote } from 'lucide-react';
+import { Bot, User, Cpu, Eye, Quote, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface MessageBubbleProps {
     message: Message;
     onViewLogs?: () => void;
+    branchInfo?: {
+        currentIndex: number;
+        total: number;
+        onNavigate: (direction: 'prev' | 'next') => void;
+    };
+    isCompact?: boolean;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLogs }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLogs, branchInfo, isCompact }) => {
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system';
 
@@ -19,27 +25,32 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLog
         <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
+            data-message-id={message.id}
             className={cn(
-                "flex w-full mb-6 gap-4",
+                "flex w-full gap-4",
+                isCompact ? "mb-3" : "mb-6",
                 isUser ? "flex-row-reverse" : "flex-row"
             )}
         >
             <div className={cn(
-                "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
+                "flex-shrink-0 rounded-full flex items-center justify-center",
+                isCompact ? "w-6 h-6" : "w-8 h-8",
                 isUser ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
                 isSystem && "bg-destructive/10 text-destructive"
             )}>
-                {isUser ? <User size={18} /> : isSystem ? <Cpu size={18} /> : <Bot size={18} />}
+                {isUser ? <User size={isCompact ? 14 : 18} /> : isSystem ? <Cpu size={isCompact ? 14 : 18} /> : <Bot size={isCompact ? 14 : 18} />}
             </div>
 
             <div className={cn(
-                "flex flex-col max-w-[85%] md:max-w-[70%]",
+                "flex flex-col",
+                isCompact ? "max-w-[90%]" : "max-w-[85%] md:max-w-[70%]",
                 isUser ? "items-end" : "items-start"
             )}>
                 <div className={cn(
-                    "text-sm md:text-base selection:bg-blue-500/30",
+                    "selection:bg-blue-500/30",
+                    isCompact ? "text-xs px-3 py-2" : "text-sm md:text-base px-4 py-3",
                     isUser
-                        ? "px-4 py-3 rounded-2xl shadow-sm bg-primary text-primary-foreground rounded-tr-sm"
+                        ? "rounded-2xl shadow-sm bg-primary text-primary-foreground rounded-tr-sm"
                         : "pl-0 pr-4 py-1 text-foreground"
                 )}>
                     {/* Reply Context UI */}
@@ -121,9 +132,33 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLog
                     </div>
                 )}
 
-                <div className="text-[10px] text-muted-foreground mt-1 px-1">
-                    {message.model && <span className="opacity-70">{message.model} • </span>}
-                    {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div className="flex items-center justify-between w-full mt-1 px-1">
+                    <div className="text-[10px] text-muted-foreground">
+                        {message.model && <span className="opacity-70">{message.model} • </span>}
+                        {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+
+                    {branchInfo && (
+                        <div className="flex items-center gap-1 bg-black/20 dark:bg-white/5 rounded-full px-1.5 py-0.5 border border-white/5">
+                            <button
+                                onClick={() => branchInfo.onNavigate('prev')}
+                                disabled={branchInfo.currentIndex === 0}
+                                className="p-0.5 hover:text-primary disabled:opacity-30 transition-colors"
+                            >
+                                <ChevronLeft size={12} />
+                            </button>
+                            <span className="text-[9px] font-medium min-w-[30px] text-center text-muted-foreground">
+                                {branchInfo.currentIndex + 1} / {branchInfo.total}
+                            </span>
+                            <button
+                                onClick={() => branchInfo.onNavigate('next')}
+                                disabled={branchInfo.currentIndex === branchInfo.total - 1}
+                                className="p-0.5 hover:text-primary disabled:opacity-30 transition-colors"
+                            >
+                                <ChevronRight size={12} />
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </motion.div>
