@@ -1,59 +1,36 @@
-# Thrx
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-> Transform linear chat into an **interactive, node-based flow** that visualizes ideas, context, and dialogue as a **living knowledge graph**.  
-> Built for clarity, collaboration, and creativity — to explore, branch, and flow through conversations like a **mind map in motion**.
+## Getting Started
 
----
+First, run the development server:
 
-## Overview
-
-**Thrx** reimagines how conversations are represented.  
-Instead of scrolling through endless chat logs, Thrx lets you **see conversations as connected nodes** — each message, branch, and idea becomes part of a dynamic, visual flow.
-
-Whether you’re building an AI chat app, a collaborative note system, or a knowledge engine — Thrx provides the foundation.
-
----
-<img width="981" height="666" alt="image" src="https://github.com/user-attachments/assets/4afd5a37-a4b8-44c2-9f9a-9837aba73a73" />
-
-### Concept
-
-When the user **selects any part of the text** in the chat or graph view:
-
-- A **hover tooltip** appears with two options:
-  - **Follow up:** continues the conversation linearly in the current thread.
-  - **Create Branch:** spawns a **new chat branch** (visually represented as a new node in the graph).
-
-Each branch becomes its own node in the **Graph Viewer**, maintaining parent-child links so users can navigate their exploration paths visually — like “conversation forking” in a knowledge graph.
-
----
-
-###Implementation Concept (React Flow + React)
-
-Here’s the functional breakdown you’d build into `Thrx`:
-
-1. **Text Selection Listener** → detects user-highlighted text.
-2. **Tooltip Component** → shows “Follow up” / “Create Branch” actions near the selection.
-3. **Branch Manager Hook** → handles adding a new node to the React Flow graph and linking it.
-4. **Graph Viewer** → updates live with new nodes and edges representing chat flows.
-5. **Persistence Layer** → stores conversation structure (like a tree) in local storage or a backend (e.g., Supabase / Postgres).
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-------------|
-| **Frontend** | React, Vite, React Flow |
-| **Backend** | Node.js, Express |
-| **AI Engine** | Ollama (`phi3:mini` by default) |
-| **Database (optional)** | PostgreSQL (future) |
-| **License** | MIT |
-
----
-
-## Setting Started
-
-### 1. Clone the Repository
 ```bash
-git clone https://github.com/jaeirm/thrx.git
-cd thrx
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
