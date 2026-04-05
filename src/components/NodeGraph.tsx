@@ -105,35 +105,35 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({
     }
 
     return (
-        <div className="flex-1 w-full h-full overflow-auto bg-background/50 relative p-10 scrollbar-hide">
-            <svg className="absolute inset-0 w-[2000px] h-[2000px] pointer-events-none">
-                <defs>
-                    <marker
-                        id="arrowhead"
-                        markerWidth="10"
-                        markerHeight="7"
-                        refX="0"
-                        refY="3.5"
-                        orient="auto"
-                    >
-                        <polygon points="0 0, 10 3.5, 0 7" fill="rgba(59, 130, 246, 0.4)" />
-                    </marker>
-                </defs>
-                {connections.map((conn, i) => (
-                    <line
-                        key={i}
-                        x1={conn.x1}
-                        y1={conn.y1}
-                        x2={conn.x2}
-                        y2={conn.y2}
-                        stroke="rgba(59, 130, 246, 0.2)"
-                        strokeWidth="2"
-                        strokeDasharray="4 4"
-                    />
-                ))}
-            </svg>
-
+        <div className="flex-1 w-full h-full overflow-auto bg-background/50 p-10 scrollbar-hide">
             <div className="relative w-[2000px] h-[2000px]">
+                <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                    <defs>
+                        <marker
+                            id="arrowhead"
+                            markerWidth="10"
+                            markerHeight="7"
+                            refX="0"
+                            refY="3.5"
+                            orient="auto"
+                        >
+                            <polygon points="0 0, 10 3.5, 0 7" fill="rgba(59, 130, 246, 0.4)" />
+                        </marker>
+                    </defs>
+                    {connections.map((conn, i) => (
+                        <line
+                            key={i}
+                            x1={conn.x1}
+                            y1={conn.y1}
+                            x2={conn.x2}
+                            y2={conn.y2}
+                            stroke="rgba(59, 130, 246, 0.2)"
+                            strokeWidth="2"
+                            strokeDasharray="4 4"
+                        />
+                    ))}
+                </svg>
+
                 {nodes.map(node => {
                     const isActive = node.id === currentChatId;
                     const isRoot = !node.parentId;

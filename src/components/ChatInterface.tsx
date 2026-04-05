@@ -33,6 +33,8 @@ export const ChatInterface = () => {
     const [branchInputContent, setBranchInputContent] = useState('');
     const [replyingTo, setReplyingTo] = useState<string | null>(null);
     const [branchReplyingTo, setBranchReplyingTo] = useState<string | null>(null);
+    const [branchContextText, setBranchContextText] = useState<string>('');
+    const [activeBranchChatId, setActiveBranchChatId] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'chat' | 'graph'>('chat');
     const [showLocalStatus, setShowLocalStatus] = useState(false);
     const [isSearchEnabled, setIsSearchEnabled] = useState(true);
@@ -54,8 +56,11 @@ export const ChatInterface = () => {
         return trail;
     };
 
+    const activeChatRef = React.useMemo(() => chats.find(c => c.id === currentChatId), [chats, currentChatId]);
+
     // Filter messages to show only the trail to the active message
     const messages = React.useMemo(() => {
+        let fullTrail: Message[] = [];
         const targetId = mainActiveMessageId;
         if (!targetId) {
             // If no active message, but we have messages, default to the latest leaf
@@ -66,13 +71,21 @@ export const ChatInterface = () => {
                 // Sort leaves by date and pick latest
                 const latestLeaf = leaves.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
-                return getTrail(latestLeaf?.id || null);
+                fullTrail = getTrail(latestLeaf?.id || null);
             }
-            return [];
+        } else {
+            fullTrail = getTrail(targetId);
         }
 
-        return getTrail(targetId);
-    }, [allMessages, mainActiveMessageId]);
+        if (activeChatRef && activeChatRef.rootMessageId) {
+            const rootIndex = fullTrail.findIndex(m => m.id === activeChatRef.rootMessageId);
+            if (rootIndex !== -1) {
+                return fullTrail.slice(rootIndex + 1);
+            }
+        }
+
+        return fullTrail;
+    }, [allMessages, mainActiveMessageId, activeChatRef]);
 
     const branchMessages = React.useMemo(() => {
         if (!isBranchDrawerOpen || !branchPointId || !branchActiveMessageId) return [];
@@ -174,6 +187,8 @@ export const ChatInterface = () => {
             setBranchActiveMessageId(lastId);
         }
         setBranchReplyingTo(text);
+        setBranchContextText(text);
+        setActiveBranchChatId(null);
         setIsBranchDrawerOpen(true);
     };
 
@@ -191,39 +206,46 @@ export const ChatInterface = () => {
         // AI Context: Will be constructed separately
         let uiContent = content;
 
-        let chatId = currentChatId;
+        let chatId = (isBranchDrawerOpen && activeBranchChatId) ? activeBranchChatId : currentChatId;
         let newChatCreated = false;
+        let activeChatObj = chats.find(c => c.id === chatId);
 
         // BRANCHING LOGIC: If sending from drawer, create a NEW sub-chat
-        if (customReplyTo !== undefined && chatId) {
+        if (customReplyTo && currentChatId) {
+            let actualParentChatId = currentChatId;
+            if (branchPointId) {
+                const sourceMsg = allMessages.find(m => m.id === branchPointId);
+                if (sourceMsg && sourceMsg.chat_id) {
+                    actualParentChatId = sourceMsg.chat_id;
+                }
+            }
+
             const newBranchChatId = Date.now().toString();
             const newBranchChat: Chat = {
                 id: newBranchChatId,
                 title: content.slice(0, 30) + (content.length > 30 ? '...' : ''),
                 created_at: new Date().toISOString(),
-                parentId: chatId,
-                rootMessageId: branchPointId || undefined
+                parentId: actualParentChatId,
+                rootMessageId: branchPointId || undefined,
+                branchText: customReplyTo || undefined
             };
 
             // Ancestors path to branch from
             const ancestors = getTrail(branchPointId);
-
-            // Promotion: This branch is now its own Chat session
-            await saveChat(newBranchChat, ancestors);
 
             // ENVIRONMENT ISOLATION: Prune the local state to just this path
             setAllMessages(ancestors);
             setMainActiveMessageId(branchPointId);
             setBranchActiveMessageId(null);
 
+            await saveChat(newBranchChat, ancestors);
+
             // Switch to the new session
             skipNextLoadRef.current = true;
-            setCurrentChatId(newBranchChatId);
             chatId = newBranchChatId;
+            setActiveBranchChatId(newBranchChatId);
             newChatCreated = true;
-
-            // Close the drawer as it's now promoted to main view
-            setIsBranchDrawerOpen(false);
+            activeChatObj = newBranchChat;
         } else if (!chatId) {
             chatId = Date.now().toString();
             skipNextLoadRef.current = true;
@@ -236,10 +258,11 @@ export const ChatInterface = () => {
                 created_at: new Date().toISOString()
             };
 
-            saveChat(newChat, []);
+            await saveChat(newChat, []);
+            activeChatObj = newChat;
         }
 
-        const parentId = ((customReplyTo !== undefined)
+        const parentId = (customReplyTo
             ? branchActiveMessageId
             : (messages[messages.length - 1]?.id)) || undefined;
 
@@ -255,7 +278,7 @@ export const ChatInterface = () => {
         };
 
         // Clear reply state
-        if (customReplyTo !== undefined) {
+        if (customReplyTo) {
             setBranchReplyingTo(null);
         } else {
             setReplyingTo(null);
@@ -263,7 +286,7 @@ export const ChatInterface = () => {
 
         // Optimistic update
         setAllMessages(prev => [...prev, userMsg]);
-        if (customReplyTo !== undefined) {
+        if (isBranchDrawerOpen) {
             setBranchActiveMessageId(userMsg.id);
         } else {
             setMainActiveMessageId(userMsg.id);
@@ -271,7 +294,6 @@ export const ChatInterface = () => {
         setIsLoading(true);
 
         const aiMsgId = (Date.now() + 1).toString();
-        // Placeholder for AI
         const aiMsg: Message = {
             id: aiMsgId,
             role: 'assistant',
@@ -282,11 +304,22 @@ export const ChatInterface = () => {
             parentId: userMsg.id
         };
         setAllMessages(prev => [...prev, aiMsg]);
-        if (customReplyTo !== undefined) {
+        if (isBranchDrawerOpen) {
             setBranchActiveMessageId(aiMsgId);
         } else {
             setMainActiveMessageId(aiMsgId);
         }
+
+        const getTrailFromList = (list: Message[], leafId: string | null) => {
+            if (!leafId) return [];
+            const trail: Message[] = [];
+            let curr = list.find(m => m.id === leafId);
+            while (curr) {
+                trail.unshift(curr);
+                curr = list.find(m => m.id === curr?.parentId);
+            }
+            return trail;
+        };
 
         // Handle attachments for local model compatibility (if needed) or just pass them through
         // Currently useLocalLLM assumes text mostly, but we can extend later.
@@ -420,14 +453,14 @@ ${compressedContext}`;
                 }
 
                 // Save complete chat after generation
-                const currentChatObj = chats.find(c => c.id === chatId) || { id: chatId, title: 'New Chat', created_at: new Date().toISOString() };
+                const chatToSave = activeChatObj || { id: chatId, title: 'New Chat', created_at: new Date().toISOString() };
                 const latestAllMessages = await new Promise<Message[]>(resolve => {
                     setAllMessages(prev => {
-                        resolve(prev);
+                        resolve(getTrailFromList(prev, aiMsgId));
                         return prev;
                     });
                 });
-                await saveChat(currentChatObj, latestAllMessages);
+                await saveChat(chatToSave, latestAllMessages);
                 console.log("[Storage] AI response saved.");
 
             } else {
@@ -436,9 +469,12 @@ ${compressedContext}`;
                 let history = [...getTrail(parentId || null), { ...userMsg, content: aiPromptContent }];
                 let generatedText = "";
 
+                const baseHistory = getTrailFromList(allMessages, parentId || null);
+                const cleanHistoryToSave = [...baseHistory, userMsg, aiMsg];
+
                 // Persist Current State BEFORE sending
-                const currentChatObj = chats.find(c => c.id === chatId) || { id: chatId, title: 'New Chat', created_at: new Date().toISOString() };
-                await saveChat(currentChatObj, [...allMessages, userMsg, aiMsg]);
+                const chatToSave = activeChatObj || { id: chatId, title: 'New Chat', created_at: new Date().toISOString() };
+                await saveChat(chatToSave, cleanHistoryToSave);
 
                 console.log("[Storage] User message saved before generation.");
 
@@ -452,7 +488,7 @@ ${compressedContext}`;
                 // Save complete chat after generation
                 setAllMessages(prev => {
                     const updated = prev.map(msg => msg.id === aiMsgId ? { ...msg, content: generatedText } : msg);
-                    saveChat(currentChatObj, updated);
+                    saveChat(chatToSave, getTrailFromList(updated, aiMsgId));
                     return updated;
                 });
                 console.log("[Storage] AI response saved.");
@@ -483,7 +519,7 @@ ${compressedContext}`;
                         await generateLocal(history, currentModel, (text) => {
                             setAllMessages(prev => {
                                 const updated = prev.map(msg => msg.id === aiMsgId ? { ...msg, content: text } : msg);
-                                saveChat(currentChatObj, updated);
+                                saveChat(chatToSave, getTrailFromList(updated, aiMsgId));
                                 return updated;
                             });
                         });
@@ -584,17 +620,7 @@ ${compressedContext}`;
 
 
 
-                    {/* Hidden Model Selector for logic, but UI is in center now? 
-                        The screenshot only shows "Cloud Model" pill near input.
-                        Let's keep the functional selector accessible but maybe hidden or moved. 
-                        For now, let's put it top right but styled differently if needed, 
-                        OR assume the "Settings" icon might access it. 
-                        Actually, let's keep the functional dropdown near Settings for usability, 
-                        but maybe style it minimal, or trust that the Pill above input triggers it.
-                    */}
-                    <div className="absolute right-16 top-4 opacity-0 hover:opacity-100 transition-opacity">
-                        <ModelSelector currentModel={currentModel} onModelChange={handleModelSelect} disabled={isLoading} />
-                    </div>
+
                 </header>
 
                 {/* Messages Area */}
@@ -602,6 +628,17 @@ ${compressedContext}`;
                     {viewMode === 'chat' ? (
                         <div className="flex-1 overflow-y-auto px-4 w-full scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                             <div className="max-w-3xl mx-auto py-6">
+                                {activeChatRef?.rootMessageId && activeChatRef?.branchText && (
+                                    <div className="mb-6 p-4 rounded-xl border border-white/5 bg-secondary/20">
+                                        <div className="flex items-center gap-2 mb-2 text-[10px] font-bold text-primary uppercase tracking-widest opacity-70">
+                                            <Quote size={10} />
+                                            <span>Originating Context</span>
+                                        </div>
+                                        <p className="text-sm italic text-muted-foreground leading-relaxed break-words">
+                                            "{activeChatRef.branchText}"
+                                        </p>
+                                    </div>
+                                )}
                                 {messages.length === 0 ? (
                                     <div className="h-full flex items-center justify-center min-h-[50vh]">
                                         <EmptyState onChipClick={(text) => handleSendMessage(text, [])} />
@@ -614,11 +651,19 @@ ${compressedContext}`;
                                             const currentBranchIndex = siblings.findIndex(m => m.id === msg.id);
                                             const totalBranches = siblings.length;
 
+                                            const messageBranches = chats.filter(c => c.rootMessageId === msg.id && c.branchText);
+
                                             return (
                                                 <MessageBubble
                                                     key={msg.id}
                                                     message={msg}
                                                     onViewLogs={() => setShowLocalStatus(true)}
+                                                    messageBranches={messageBranches}
+                                                    onBranchNavigate={(id: string) => {
+                                                        setCurrentChatId(id);
+                                                        setViewMode('chat');
+                                                    }}
+                                                    onParentNavigate={activeChatRef?.parentId ? () => setCurrentChatId(activeChatRef?.parentId) : undefined}
                                                     branchInfo={totalBranches > 1 ? {
                                                         currentIndex: currentBranchIndex,
                                                         total: totalBranches,
@@ -694,10 +739,12 @@ ${compressedContext}`;
                     currentModel={currentModel}
                     onModelClick={() => setIsModelDrawerOpen(true)}
                     replyingTo={branchReplyingTo}
+                    branchContextText={branchContextText}
                     onCancelReply={() => setBranchReplyingTo(null)}
                     inputContent={branchInputContent}
                     setInputContent={setBranchInputContent}
                     onStop={handleStop}
+                    onParentNavigate={() => setIsBranchDrawerOpen(false)}
                 />
 
                 <LocalModelStatus

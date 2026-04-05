@@ -27,13 +27,13 @@ export const TextSelectionTooltip: React.FC<TextSelectionTooltipProps> = ({ onQu
 
             // Find parent message ID
             let messageId: string | undefined = undefined;
-            let node: Node | null = selection.anchorNode;
-            while (node && node !== document.body) {
-                if (node instanceof HTMLElement && node.hasAttribute('data-message-id')) {
-                    messageId = node.getAttribute('data-message-id') || undefined;
-                    break;
+            const node = selection.anchorNode;
+            if (node) {
+                const element = node.nodeType === 3 ? node.parentElement : node as HTMLElement;
+                const messageEl = element?.closest('[data-message-id]');
+                if (messageEl) {
+                    messageId = messageEl.getAttribute('data-message-id') || undefined;
                 }
-                node = node.parentNode;
             }
 
             const range = selection.getRangeAt(0);
@@ -74,7 +74,7 @@ export const TextSelectionTooltip: React.FC<TextSelectionTooltipProps> = ({ onQu
     return (
         <div
             ref={tooltipRef}
-            className="fixed z-50 animate-in fade-in zoom-in-95 duration-200"
+            className="fixed z-[100] animate-in fade-in zoom-in-95 duration-200"
             style={{
                 left: position.x,
                 top: position.y,

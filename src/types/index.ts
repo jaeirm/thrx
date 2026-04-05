@@ -26,6 +26,7 @@ export interface Chat {
     user_id?: string;
     parentId?: string; // For grouping in sidebar
     rootMessageId?: string; // The message it branched from
+    branchText?: string; // The specific text that was branched from the parent message
 }
 
 export type ModelType =

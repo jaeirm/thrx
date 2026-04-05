@@ -2,7 +2,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
-import { Message } from '@/types';
+import { Message, Chat } from '@/types';
 import { Bot, User, Cpu, Eye, Quote, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -15,11 +15,26 @@ interface MessageBubbleProps {
         onNavigate: (direction: 'prev' | 'next') => void;
     };
     isCompact?: boolean;
+    messageBranches?: Chat[];
+    onBranchNavigate?: (chatId: string) => void;
+    onParentNavigate?: () => void;
 }
 
-export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLogs, branchInfo, isCompact }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLogs, branchInfo, isCompact, messageBranches, onBranchNavigate, onParentNavigate }) => {
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system';
+
+    let processedContent = message.content;
+    if (messageBranches && processedContent) {
+        messageBranches.forEach(branch => {
+            if (branch.branchText && processedContent.includes(branch.branchText)) {
+                processedContent = processedContent.replaceAll(
+                    branch.branchText,
+                    `[${branch.branchText}](#branch-${branch.id})`
+                );
+            }
+        });
+    }
 
     return (
         <motion.div
@@ -58,6 +73,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLog
                         <div
                             onClick={(e) => {
                                 e.stopPropagation();
+                                if (onParentNavigate) {
+                                    onParentNavigate();
+                                    return;
+                                }
+
                                 // Find text in DOM
                                 const startNode = e.currentTarget;
                                 const frames = document.querySelectorAll('.prose'); // Search in AI/User message bodies
@@ -98,10 +118,30 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLog
                                     pre: ({ node, ...props }) => <div className="overflow-auto w-full my-2 bg-black/50 p-2 rounded-lg" {...props as any} />,
                                     code: ({ node, className, children, ...props }) => {
                                         return <code className={cn("bg-black/20 px-1 py-0.5 rounded text-sm", className)} {...props}>{children}</code>
+                                    },
+                                    a: ({ node, href, children, ...props }) => {
+                                        if (href?.startsWith('#branch-')) {
+                                            const chatId = href.replace('#branch-', '');
+                                            return (
+                                                <span
+                                                    className="bg-emerald-500/20 text-emerald-400 border-b border-emerald-500/50 cursor-pointer relative group transition-colors hover:bg-emerald-500/40 px-1 flex-inline items-center rounded-sm"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        onBranchNavigate?.(chatId);
+                                                    }}
+                                                >
+                                                    {children}
+                                                    <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-black text-xs font-medium rounded-md shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10 border border-emerald-500/30">
+                                                        Go to branch ➔
+                                                    </span>
+                                                </span>
+                                            );
+                                        }
+                                        return <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" {...props}>{children}</a>;
                                     }
                                 }}
                             >
-                                {message.content}
+                                {processedContent}
                             </ReactMarkdown>
                         </div>
                     ) : (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, Plus, Settings, LogOut, PanelLeftClose } from 'lucide-react';
+import { MessageSquare, Plus, Settings, LogOut, PanelLeftClose, GitBranch } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Chat } from '@/types';
 
@@ -36,6 +36,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
             currId = curr.parentId;
         }
         return false;
+    };
+
+    const renderChatList = (chatsToRender: Chat[], depth: number = 0) => {
+        return chatsToRender.map(chat => {
+            const isActive = currentChatId === chat.id;
+            const children = chats.filter(c => c.parentId === chat.id);
+            const hasActiveChild = currentChatId && isDescendant(chat.id, currentChatId, chats);
+
+            return (
+                <React.Fragment key={chat.id}>
+                    <button
+                        onClick={() => onSelectChat(chat.id)}
+                        style={{ paddingLeft: `${Math.max(1, depth * 1.5) + 1}rem` }}
+                        className={cn(
+                            "w-full text-left py-2 pr-4 rounded-lg flex items-center gap-3 transition-colors text-sm truncate my-0.5",
+                            isActive || (hasActiveChild && depth === 0)
+                                ? "bg-secondary text-secondary-foreground"
+                                : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                        )}
+                    >
+                        {depth > 0 ? <GitBranch size={14} className="shrink-0 opacity-50" /> : <MessageSquare size={16} className="shrink-0" />}
+                        <span className="truncate">{chat.title || (depth > 0 ? "Branch" : "New Group")}</span>
+                    </button>
+                    {children.length > 0 && <div className="flex flex-col w-full">{renderChatList(children, depth + 1)}</div>}
+                </React.Fragment>
+            );
+        });
     };
 
     return (
@@ -81,28 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             No groups yet
                         </div>
                     ) : (
-                        rootChats.map(chat => {
-                            // Highlight if this is the active group OR if active chat is a descendant
-                            const isActiveGroup = currentChatId === chat.id ||
-                                (currentChatId && chats.find(c => c.id === currentChatId)?.parentId === chat.id) ||
-                                (currentChatId && chats.find(c => c.id === currentChatId)?.parentId && isDescendant(chat.id, currentChatId, chats));
-
-                            return (
-                                <button
-                                    key={chat.id}
-                                    onClick={() => onSelectChat(chat.id)}
-                                    className={cn(
-                                        "w-full text-left px-4 py-3 rounded-lg flex items-center gap-3 transition-colors text-sm truncate",
-                                        isActiveGroup
-                                            ? "bg-secondary text-secondary-foreground"
-                                            : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                                    )}
-                                >
-                                    <MessageSquare size={16} className="shrink-0" />
-                                    <span className="truncate">{chat.title || "New Group"}</span>
-                                </button>
-                            );
-                        })
+                        renderChatList(rootChats)
                     )}
                 </div>
 

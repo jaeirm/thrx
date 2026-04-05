@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, Bot, User, Quote } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Bot, User, Quote, Maximize2, Minimize2 } from 'lucide-react';
 import { Message, Attachment, ModelType } from '@/types';
 import { MessageBubble } from './MessageBubble';
 import { InputArea } from './InputArea';
@@ -18,6 +18,8 @@ interface BranchDrawerProps {
     inputContent: string;
     setInputContent: (val: string) => void;
     onStop?: () => void;
+    branchContextText: string;
+    onParentNavigate?: () => void;
 }
 
 export const BranchDrawer: React.FC<BranchDrawerProps> = ({
@@ -32,9 +34,12 @@ export const BranchDrawer: React.FC<BranchDrawerProps> = ({
     onCancelReply,
     inputContent,
     setInputContent,
-    onStop
+    onStop,
+    branchContextText,
+    onParentNavigate
 }) => {
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -57,7 +62,10 @@ export const BranchDrawer: React.FC<BranchDrawerProps> = ({
             />
 
             {/* Drawer Content */}
-            <div className="relative w-full max-w-4xl h-[85vh] bg-card border-t border-x border-border rounded-t-[2.5rem] shadow-2xl pointer-events-auto flex flex-col animate-in slide-in-from-bottom-full duration-500 ease-out overflow-hidden">
+            <div className={cn(
+                "relative w-full bg-card border-t border-x border-border shadow-2xl pointer-events-auto flex flex-col animate-in slide-in-from-bottom-full duration-500 ease-out overflow-hidden transition-all",
+                isFullscreen ? "max-w-full h-screen rounded-none" : "max-w-4xl h-[85vh] rounded-t-[2.5rem]"
+            )}>
 
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 bg-secondary/20">
@@ -70,12 +78,22 @@ export const BranchDrawer: React.FC<BranchDrawerProps> = ({
                             <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Active Thinking Path</p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 rounded-full hover:bg-secondary transition-colors"
-                    >
-                        <X size={20} className="text-muted-foreground" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setIsFullscreen(!isFullscreen)}
+                            className="p-2 rounded-full hover:bg-secondary transition-colors"
+                            title={isFullscreen ? "Minimize" : "Fullscreen"}
+                        >
+                            {isFullscreen ? <Minimize2 size={20} className="text-muted-foreground" /> : <Maximize2 size={20} className="text-muted-foreground" />}
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="p-2 rounded-full hover:bg-secondary transition-colors"
+                            title="Close"
+                        >
+                            <X size={20} className="text-muted-foreground" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Messages Trail */}
@@ -87,8 +105,8 @@ export const BranchDrawer: React.FC<BranchDrawerProps> = ({
                             <Quote size={10} />
                             <span>Originating Context</span>
                         </div>
-                        <p className="text-sm italic text-muted-foreground leading-relaxed">
-                            "{replyingTo}"
+                        <p className="text-sm italic text-muted-foreground leading-relaxed break-words">
+                            "{branchContextText}"
                         </p>
                     </div>
 
@@ -103,6 +121,7 @@ export const BranchDrawer: React.FC<BranchDrawerProps> = ({
                                 key={msg.id}
                                 message={msg}
                                 isCompact={true}
+                                onParentNavigate={onParentNavigate}
                             />
                         ))
                     )}
