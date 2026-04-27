@@ -32,6 +32,16 @@ export const AVAILABLE_MODELS: AIModel[] = [
 
     // Local Models (Mobile Optimized)
     {
+        id: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+        name: 'Qwen2.5 0.5B',
+        type: 'local',
+        desc: 'Extremely fast, smallest model available (Lightning Fast)',
+        size: '350MB',
+        vram: '500MB',
+        provider: 'Alibaba',
+        category: 'mobile'
+    },
+    {
         id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC',
         name: 'Llama 3.2 1B',
         type: 'local',

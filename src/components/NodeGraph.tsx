@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Chat } from '@/types';
 import { cn } from '@/lib/utils';
 import { MessageSquare, GitBranch, Crown } from 'lucide-react';
@@ -20,6 +20,35 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({
     currentChatId,
     onSelectChat
 }) => {
+    const [dragOffsets, setDragOffsets] = useState<Record<string, { x: number, y: number }>>({});
+    const [draggedNode, setDraggedNode] = useState<string | null>(null);
+
+    useEffect(() => {
+        const handleGlobalPointerUp = () => setDraggedNode(null);
+        window.addEventListener('pointerup', handleGlobalPointerUp);
+        return () => window.removeEventListener('pointerup', handleGlobalPointerUp);
+    }, []);
+
+    const handlePointerDown = (e: React.PointerEvent, id: string) => {
+        // Prevent click events from firing immediately
+        e.stopPropagation();
+        setDraggedNode(id);
+    };
+
+    const handlePointerMove = (e: React.PointerEvent) => {
+        if (!draggedNode) return;
+        setDragOffsets(prev => {
+            const current = prev[draggedNode] || { x: 0, y: 0 };
+            return {
+                ...prev,
+                [draggedNode]: {
+                    x: current.x + e.movementX,
+                    y: current.y + e.movementY
+                }
+            };
+        });
+    };
+
     // 1. Build the tree and calculate positions
     const { nodes, connections } = useMemo(() => {
         const map = new Map<string, GraphNode>();
@@ -49,8 +78,9 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({
         const nodeWidth = 200;
 
         const layout = (node: GraphNode, x: number, y: number, width: number) => {
-            node.x = x;
-            node.y = y;
+            const offset = dragOffsets[node.id] || { x: 0, y: 0 };
+            node.x = x + offset.x;
+            node.y = y + offset.y;
             allNodes.push(node);
 
             if (node.children.length > 0) {
@@ -59,13 +89,18 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({
                 let startX = x - (totalChildrenWidth / 2) + (childWidth / 2);
 
                 node.children.forEach(child => {
-                    layout(child, startX, y + levelHeight, childWidth);
+                    const childOffset = dragOffsets[child.id] || { x: 0, y: 0 };
+                    const actualChildX = startX + childOffset.x;
+                    const actualChildY = (y + levelHeight) + childOffset.y;
+
                     allConnections.push({
                         x1: node.x,
                         y1: node.y + 30, // Connect from bottom of node
-                        x2: child.x,
-                        y2: child.y - 30  // Connect to top of node
+                        x2: actualChildX,
+                        y2: actualChildY - 30  // Connect to top of node
                     });
+                    
+                    layout(child, startX, y + levelHeight, childWidth);
                     startX += childWidth;
                 });
             }
@@ -94,7 +129,7 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({
         }
 
         return { nodes: allNodes, connections: allConnections };
-    }, [chats, currentChatId]);
+    }, [chats, currentChatId, dragOffsets]);
 
     if (nodes.length === 0) {
         return (
@@ -105,8 +140,13 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({
     }
 
     return (
-        <div className="flex-1 w-full h-full overflow-auto bg-background/50 p-10 scrollbar-hide">
-            <div className="relative w-[2000px] h-[2000px]">
+        <div 
+            className="flex-1 w-full h-full overflow-auto bg-background/50 p-10 scrollbar-hide"
+            onPointerMove={handlePointerMove}
+            onPointerUp={() => setDraggedNode(null)}
+            onPointerLeave={() => setDraggedNode(null)}
+        >
+            <div className="relative w-[2000px] h-[2000px] touch-none">
                 <svg className="absolute inset-0 w-full h-full pointer-events-none">
                     <defs>
                         <marker
@@ -141,17 +181,19 @@ export const NodeGraph: React.FC<NodeGraphProps> = ({
                     return (
                         <button
                             key={node.id}
-                            onClick={() => onSelectChat(node.id)}
+                            onPointerDown={(e) => handlePointerDown(e, node.id)}
+                            onDoubleClick={() => onSelectChat(node.id)}
                             style={{
                                 left: node.x - 80,
                                 top: node.y - 30,
                                 width: 160,
                             }}
                             className={cn(
-                                "absolute h-[60px] rounded-xl border flex flex-col items-center justify-center transition-all duration-300 p-2 text-center group",
+                                "absolute h-[60px] rounded-xl border flex flex-col items-center justify-center transition-all duration-75 p-2 text-center group cursor-grab active:cursor-grabbing",
                                 isActive
                                     ? "bg-primary/20 border-primary shadow-[0_0_20px_rgba(59,130,246,0.3)] z-20 scale-105"
-                                    : "bg-card/50 border-border hover:border-primary/50 hover:bg-card/80 z-10"
+                                    : "bg-card/50 border-border hover:border-primary/50 hover:bg-card/80 z-10",
+                                draggedNode === node.id ? "scale-105 shadow-xl opacity-90 transition-none z-30" : ""
                             )}
                         >
                             <div className="flex items-center gap-2 mb-1">

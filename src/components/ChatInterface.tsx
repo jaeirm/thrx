@@ -14,7 +14,10 @@ import { ModelDrawer } from './ModelDrawer';
 import { TextSelectionTooltip } from './TextSelectionTooltip';
 import { LocalModelStatus } from './LocalModelStatus';
 import { BranchDrawer } from './BranchDrawer';
+import { SettingsDrawer } from './SettingsDrawer';
+import { MetricsTerminal } from './MetricsTerminal';
 import { shouldPerformSearch, analyzeQuery } from '@/lib/searchUtils';
+import { searchRelevantContext } from '@/lib/ragEngine';
 import { cn } from '@/lib/utils';
 import { Menu, Zap, Settings, MessageSquare, Map as MapIcon, GitBranch, Quote, Share2, ChevronRight } from 'lucide-react';
 
@@ -27,6 +30,7 @@ export const ChatInterface = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [currentModel, setCurrentModel] = useState<ModelType>('gemini-2.5-flash');
     const [isModelDrawerOpen, setIsModelDrawerOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isBranchDrawerOpen, setIsBranchDrawerOpen] = useState(false);
     const [branchPointId, setBranchPointId] = useState<string | null>(null);
     const [inputContent, setInputContent] = useState('');
@@ -42,8 +46,17 @@ export const ChatInterface = () => {
     const skipNextLoadRef = React.useRef(false);
 
     const { chats, saveChat, loadMessages, deleteChat, clearAllChats } = useChatStorage();
-    const { isModelLoading, progress, progressText, logs, loadModel, generate: generateLocal, interrupt: interruptLocal } = useLocalLLM();
+    const { isModelLoading, progress, progressText, logs, metrics, loadModel, generate: generateLocal, interrupt: interruptLocal } = useLocalLLM();
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
+    const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+    const [isUserScrolled, setIsUserScrolled] = useState(false);
+
+    const handleScroll = () => {
+        if (!scrollContainerRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+        setIsUserScrolled(!isNearBottom);
+    };
 
     const getTrail = (targetId: string | null) => {
         if (!targetId) return [];
@@ -98,13 +111,23 @@ export const ChatInterface = () => {
         return fullTrail.slice(branchPointIndex + 1);
     }, [allMessages, branchActiveMessageId, isBranchDrawerOpen, branchPointId]);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const scrollToBottom = (force = false) => {
+        if (!force && isUserScrolled) return;
+        // Only use smooth scrolling if it's forced (e.g. initial load or intentional scroll to bottom), 
+        // to prevent jerky behavior during generation
+        messagesEndRef.current?.scrollIntoView({ behavior: force ? "smooth" : "auto" });
     };
 
     useEffect(() => {
+        // When messages change, only auto-scroll if user hasn't scrolled up manually
         scrollToBottom();
     }, [messages, isLoading]);
+
+    // Force scroll to bottom on new chat
+    useEffect(() => {
+        setIsUserScrolled(false);
+        setTimeout(() => scrollToBottom(true), 100);
+    }, [currentChatId]);
 
     // Load messages when chat changes
     useEffect(() => {
@@ -375,14 +398,8 @@ export const ChatInterface = () => {
                                 .map((r: any, i: number) => `Result ${i + 1}:\nTitle: ${r.title}\nSource: ${r.url}\nSummary: ${r.content}`)
                                 .join('\n\n');
 
-                            // 4. Mixed Reply Prompt Design
-                            return `System: You are an intelligent assistant with access to real-time information.
-Use the following web search results as factual reference. Combine them with your own knowledge to answer the user's question.
-If the web data conflicts with your internal knowledge, prioritize the web data. 
-Do NOT fabricate facts.
-
-Web Data:
-${compressedContext}`;
+                            // 4. Clean Reply Prompt Design using XML
+                            return `<web_search_results>\n${compressedContext}\n</web_search_results>`;
                         }
                     }
                 } catch (e) {
@@ -410,25 +427,56 @@ ${compressedContext}`;
                 if (searchContext) finalSearchContext = searchContext;
             }
 
-            // Construct AI Prompt (including Search Context + Reply Context)
+            // --- LOCAL RAG CONTEXT SEARCH ---
+            // Search IndexedDB for relevant document chunks purely locally
+            let ragContext = "";
+            try {
+                // Determine a safe search query
+                const queryToSearch = userMsg.replyTo ? `${userMsg.replyTo} ${content}` : content;
+                ragContext = await searchRelevantContext(queryToSearch, 3);
+            } catch (e) {
+                console.error("Local RAG search failed:", e);
+            }
+
+            // Construct Context Blocks for System Role
+            let systemContext = "You are a helpful, conversational, and highly capable AI assistant.";
+            const contextBlocks = [];
+            if (ragContext) contextBlocks.push(ragContext);
+            if (finalSearchContext) contextBlocks.push(finalSearchContext);
+
+            if (contextBlocks.length > 0) {
+                systemContext = `You are a helpful, conversational, and highly capable AI assistant. 
+Please carefully read the following supplementary context and use it to accurately answer the user's question.
+
+<context>
+${contextBlocks.join('\n\n')}
+</context>`;
+            }
+
+            // Construct pure AI Prompt for the User Role
             let aiPromptContent = content;
             if (userMsg.replyTo) {
-                aiPromptContent = `Referring to "${userMsg.replyTo}":\n\n${content}`;
-            }
-            if (finalSearchContext) {
-                aiPromptContent = `${finalSearchContext}\n\nUser Query: ${aiPromptContent}`;
+                aiPromptContent = `Context: "${userMsg.replyTo}"\n\n${content}`;
             }
 
             if (currentModel.includes('gemini')) {
                 // Cloud Generation
+                
+                let cloudHistory = [];
+                if (systemContext) {
+                    cloudHistory.push({ role: 'system', content: systemContext });
+                }
+                cloudHistory.push(...getTrail(parentId || null));
+                cloudHistory.push({ ...userMsg, content: aiPromptContent });
+
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        messages: [...getTrail(parentId || null), { ...userMsg, content: aiPromptContent }].map(m => ({
+                        messages: cloudHistory.map(m => ({
                             role: m.role,
                             content: m.content,
-                            attachments: m.attachments // Pass attachments to API
+                            attachments: (m as any).attachments // Pass attachments to API safely
                         })),
                         model: currentModel
                     })
@@ -465,8 +513,17 @@ ${compressedContext}`;
 
             } else {
                 // Local Generation
-                // Use explicit prompt construction for history
-                let history = [...getTrail(parentId || null), { ...userMsg, content: aiPromptContent }];
+                // Slidding Windows: Limit history to last 5 messages to dramatically speed up WebLLM prefill tokens
+                const fullHistory = getTrail(parentId || null);
+                const recentHistory = fullHistory.slice(-5);
+                
+                let history = [];
+                if (systemContext) {
+                    history.push({ role: 'system', content: systemContext });
+                }
+                history.push(...recentHistory);
+                history.push({ ...userMsg, content: aiPromptContent });
+                
                 let generatedText = "";
 
                 const baseHistory = getTrailFromList(allMessages, parentId || null);
@@ -567,16 +624,21 @@ ${compressedContext}`;
                     setBranchActiveMessageId(null);
                     setIsSidebarOpen(false);
                 }}
+                onSettingsClick={() => setIsSettingsOpen(true)}
             />
 
-            <div className="flex-1 flex flex-col h-full w-full relative z-10">
+            <div className="flex-1 flex flex-col h-full relative z-10 min-w-0">
                 {/* Custom Thrx Header */}
                 <header className="h-16 flex items-center justify-between px-6 sticky top-0 z-30 bg-background/0">
                     <div className="flex items-center gap-3">
-                        <div className="text-blue-500 font-bold text-3xl tracking-tight">Thrx</div>
+                        <button
+                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                            className="p-2 text-muted-foreground hover:text-white transition-colors -ml-2"
+                        >
+                            <Menu size={24} />
+                        </button>
                         {currentChatId && (
-                            <div className="flex items-center gap-2 text-muted-foreground/60">
-                                <ChevronRight size={16} />
+                            <div className="flex items-center gap-2 text-muted-foreground/60 border-l border-white/10 pl-3">
                                 <span className="text-sm font-medium truncate max-w-[200px]">
                                     {chats.find(c => c.id === currentChatId)?.title || "Branch"}
                                 </span>
@@ -584,13 +646,6 @@ ${compressedContext}`;
                         )}
                     </div>
                     <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                            className="p-2 text-muted-foreground hover:text-white transition-colors"
-                        >
-                            <Menu size={24} />
-                        </button>
-
                         {/* View Toggle */}
                         {currentChatId && (
                             <div className="flex items-center bg-secondary/30 rounded-full p-1 border border-white/5">
@@ -616,6 +671,7 @@ ${compressedContext}`;
                                 </button>
                             </div>
                         )}
+                        <div className="text-blue-500 font-bold text-3xl tracking-tight ml-2">Thrx</div>
                     </div>
 
 
@@ -626,7 +682,11 @@ ${compressedContext}`;
                 {/* Messages Area */}
                 <main className="flex-1 flex flex-col relative overflow-hidden">
                     {viewMode === 'chat' ? (
-                        <div className="flex-1 overflow-y-auto px-4 w-full scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                        <div 
+                            ref={scrollContainerRef}
+                            onScroll={handleScroll}
+                            className="flex-1 overflow-y-auto px-4 w-full scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
+                        >
                             <div className="max-w-3xl mx-auto py-6">
                                 {activeChatRef?.rootMessageId && activeChatRef?.branchText && (
                                     <div className="mb-6 p-4 rounded-xl border border-white/5 bg-secondary/20">
@@ -747,6 +807,11 @@ ${compressedContext}`;
                     onParentNavigate={() => setIsBranchDrawerOpen(false)}
                 />
 
+                <SettingsDrawer 
+                    isOpen={isSettingsOpen} 
+                    onClose={() => setIsSettingsOpen(false)} 
+                />
+
                 <LocalModelStatus
                     isOpen={showLocalStatus}
                     onClose={() => setShowLocalStatus(false)}
@@ -754,6 +819,13 @@ ${compressedContext}`;
                     progress={progress}
                     logs={logs}
                     isComplete={!isModelLoading && progress === 1}
+                />
+
+                {/* Bottom Real-Time Metrics & Terminal (Now inside flexible box) */}
+                <MetricsTerminal 
+                    logs={logs} 
+                    modelId={currentModel} 
+                    metrics={metrics || ''} 
                 />
             </div>
         </div>

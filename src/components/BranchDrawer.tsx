@@ -39,17 +39,35 @@ export const BranchDrawer: React.FC<BranchDrawerProps> = ({
     onParentNavigate
 }) => {
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
+    const scrollContainerRef = React.useRef<HTMLDivElement>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isUserScrolled, setIsUserScrolled] = useState(false);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const handleScroll = () => {
+        if (!scrollContainerRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+        const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+        setIsUserScrolled(!isNearBottom);
+    };
+
+    const scrollToBottom = (force = false) => {
+        if (!force && isUserScrolled) return;
+        messagesEndRef.current?.scrollIntoView({ behavior: force ? "smooth" : "auto" });
     };
 
     React.useEffect(() => {
         if (isOpen) {
-            setTimeout(scrollToBottom, 100);
+            scrollToBottom();
         }
     }, [messages, isLoading, isOpen]);
+
+    // Force scroll to bottom when drawer opens
+    React.useEffect(() => {
+        if (isOpen) {
+            setIsUserScrolled(false);
+            setTimeout(() => scrollToBottom(true), 100);
+        }
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -97,7 +115,11 @@ export const BranchDrawer: React.FC<BranchDrawerProps> = ({
                 </div>
 
                 {/* Messages Trail */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                <div 
+                    ref={scrollContainerRef}
+                    onScroll={handleScroll}
+                    className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
+                >
                     {/* Branch Context Anchor */}
                     <div className="mb-8 p-4 rounded-2xl bg-primary/5 border border-primary/10 relative overflow-hidden group">
                         <div className="absolute top-0 left-0 w-1 h-full bg-primary/30" />

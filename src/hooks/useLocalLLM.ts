@@ -6,6 +6,7 @@ export const useLocalLLM = () => {
     const [progress, setProgress] = useState(0);
     const [progressText, setProgressText] = useState('');
     const [logs, setLogs] = useState<string[]>([]);
+    const [metrics, setMetrics] = useState<string>('');
     const engineRef = useRef<webllm.MLCEngineInterface | null>(null);
 
     const initEngine = useCallback(async (modelId: string) => {
@@ -83,13 +84,25 @@ export const useLocalLLM = () => {
             });
 
             let fullText = "";
+            let lastUpdate = performance.now();
             for await (const chunk of reply) {
                 const delta = chunk.choices[0]?.delta.content || "";
                 if (delta) {
                     fullText += delta;
-                    onUpdate(fullText);
+                    const now = performance.now();
+                    // Throttle updates to ~20 FPS (every 50ms) to prevent React from choking
+                    if (now - lastUpdate > 50) {
+                        onUpdate(fullText);
+                        lastUpdate = now;
+                    }
                 }
             }
+            // Ensure final update is sent
+            onUpdate(fullText);
+
+            const stats = await engine.runtimeStatsText();
+            setMetrics(stats);
+            setLogs(prev => [...prev, `Generation Complete: ${stats}`]);
         } catch (err) {
             console.error("Generation failed", err);
             throw err;
@@ -109,6 +122,7 @@ export const useLocalLLM = () => {
         progress,
         progressText,
         logs,
+        metrics,
         loadModel: initEngine,
         generate,
         interrupt

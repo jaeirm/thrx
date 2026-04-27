@@ -35,6 +35,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
 }) => {
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [isUploading, setIsUploading] = useState(false);
+    const [uploadStatus, setUploadStatus] = useState<string>('');
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,14 +66,21 @@ export const InputArea: React.FC<InputAreaProps> = ({
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             setIsUploading(true);
+            setUploadStatus('Starting processing...');
             try {
                 const files = Array.from(e.target.files);
-                const uploaded = await Promise.all(files.map(file => uploadFile(file)));
+                const uploaded: Attachment[] = [];
+                for (const file of files) {
+                    const att = await uploadFile(file, (msg) => setUploadStatus(`${file.name}: ${msg}`));
+                    uploaded.push(att);
+                }
                 setAttachments(prev => [...prev, ...uploaded]);
             } catch (error) {
                 console.error("Upload failed", error);
+                setUploadStatus('Upload failed');
             } finally {
                 setIsUploading(false);
+                setTimeout(() => setUploadStatus(''), 3000);
                 if (fileInputRef.current) fileInputRef.current.value = '';
             }
         }
@@ -110,6 +118,13 @@ export const InputArea: React.FC<InputAreaProps> = ({
                         >
                             <X size={14} />
                         </button>
+                    </div>
+                )}
+                
+                {/* Upload Status */}
+                {isUploading && uploadStatus && (
+                    <div className="flex items-center px-4 py-2 border-b border-white/5 bg-blue-500/10 text-blue-400 text-xs animate-pulse">
+                         {uploadStatus}
                     </div>
                 )}
 

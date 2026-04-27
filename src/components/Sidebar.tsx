@@ -11,6 +11,7 @@ interface SidebarProps {
     onSelectChat: (chatId: string) => void;
     onNewChat: () => void;
     onClearChats: () => void;
+    onSettingsClick?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -20,7 +21,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     currentChatId,
     onSelectChat,
     onNewChat,
-    onClearChats
+    onClearChats,
+    onSettingsClick
 }) => {
     // Filter to only root chats (Groups)
     const rootChats = React.useMemo(() => {
@@ -124,7 +126,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <LogOut size={18} />
                         <span>Clear All Chats</span>
                     </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-secondary/50 hover:text-foreground rounded-lg transition-colors">
+                    <button 
+                        onClick={onSettingsClick} 
+                        className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:bg-secondary/50 hover:text-foreground rounded-lg transition-colors"
+                    >
                         <Settings size={18} />
                         <span>Settings</span>
                     </button>
