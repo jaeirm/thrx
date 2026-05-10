@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Use DuckDuckGo HTML version for easier scraping
-        const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+        // Use Yahoo Search as it doesn't block Vercel IPs like DuckDuckGo does
+        const searchUrl = `https://search.yahoo.com/search?p=${encodeURIComponent(query)}`;
 
         const response = await fetch(searchUrl, {
             headers: {
@@ -32,12 +32,12 @@ export async function POST(req: NextRequest) {
 
         const results: { title: string; url: string; content: string }[] = [];
 
-        $('.result').each((i: number, element: any) => {
+        $('.algo').each((i: number, element: any) => {
             if (i >= 5) return false; // Limit to top 5 results
 
-            const title = $(element).find('.result__title').text().trim();
-            const url = $(element).find('.result__url').attr('href')?.trim();
-            const snippet = $(element).find('.result__snippet').text().trim();
+            const title = $(element).find('h3.title').text().trim() || $(element).find('h3').text().trim();
+            const url = $(element).find('a').attr('href')?.trim();
+            const snippet = $(element).find('.compTitle ~ div').text().trim() || $(element).find('.compText').text().trim() || $(element).find('.fc-falcon').text().trim();
 
             if (title && url && snippet) {
                 results.push({

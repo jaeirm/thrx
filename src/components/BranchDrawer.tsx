@@ -162,6 +162,7 @@ export const BranchDrawer: React.FC<BranchDrawerProps> = ({
                         isLoading={isLoading}
                         onModelClick={onModelClick}
                         isLocalModel={!currentModel.includes('gemini')}
+                        currentModel={currentModel}
                         value={inputContent}
                         onChange={setInputContent}
                         replyingTo={replyingTo}

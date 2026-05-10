@@ -17,16 +17,48 @@ export const AVAILABLE_MODELS: AIModel[] = [
         id: 'gemini-2.5-flash',
         name: 'Gemini 2.5 Flash',
         type: 'cloud',
-        desc: 'Newest, fast, multimodal',
+        desc: 'Fast, multimodal model from Google',
         provider: 'Google',
         category: 'cloud'
     },
     {
-        id: 'gemini-2.0-flash',
-        name: 'Gemini 2.0 Flash',
+        id: 'gemini-2.5-pro',
+        name: 'Gemini 2.5 Pro',
         type: 'cloud',
-        desc: 'Previous stable version',
+        desc: 'Advanced reasoning and coding',
         provider: 'Google',
+        category: 'cloud'
+    },
+    {
+        id: 'gpt-4o',
+        name: 'GPT-4o',
+        type: 'cloud',
+        desc: 'Flagship OpenAI model, highly capable',
+        provider: 'OpenAI',
+        category: 'cloud'
+    },
+    {
+        id: 'gpt-4o-mini',
+        name: 'GPT-4o Mini',
+        type: 'cloud',
+        desc: 'Fast and affordable OpenAI model',
+        provider: 'OpenAI',
+        category: 'cloud'
+    },
+    {
+        id: 'claude-3-5-sonnet-20241022',
+        name: 'Claude 3.5 Sonnet',
+        type: 'cloud',
+        desc: 'Anthropic\'s best model for coding and analysis',
+        provider: 'Anthropic',
+        category: 'cloud'
+    },
+    {
+        id: 'claude-3-haiku-20240307',
+        name: 'Claude 3 Haiku',
+        type: 'cloud',
+        desc: 'Anthropic\'s fastest and most affordable model',
+        provider: 'Anthropic',
         category: 'cloud'
     },
 

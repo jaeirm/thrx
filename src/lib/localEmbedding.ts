@@ -14,15 +14,17 @@ export function chunkText(text: string, chunkSize: number = 1000, overlap: numbe
 // Replaces heavy Neural Embeddings with an instant, crash-proof Javascript algorithm
 // --------------------------------------------------------------------------------
 
-/**
- * Normalizes text and splits into lowercase tokens
- */
+const STOP_WORDS = new Set([
+    'the', 'and', 'for', 'with', 'that', 'this', 'from', 'but', 'not', 'have',
+    'will', 'can', 'your', 'their', 'there', 'which', 'about', 'been', 'would'
+]);
+
 function tokenize(text: string): string[] {
     return text
         .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ') // Replace punctuation with space
+        .replace(/[^a-z0-9\s]/g, ' ')
         .split(/\s+/)
-        .filter(word => word.length > 2); // Ignore extremely short words like "a", "is"
+        .filter(word => word.length >= 2 && !STOP_WORDS.has(word));
 }
 
 /**

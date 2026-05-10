@@ -80,9 +80,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Sidebar Container */}
             <div className={cn(
-                "fixed md:relative inset-y-0 left-0 z-50 w-72 bg-gray-900 border-r border-gray-800 transition-transform duration-300 ease-in-out md:translate-x-0 flex flex-col",
+                "fixed md:relative inset-y-0 left-0 z-50 w-72 bg-background/80 backdrop-blur-2xl border-r border-white/5 transition-transform duration-300 ease-in-out md:translate-x-0 flex flex-col overflow-hidden",
                 isOpen ? "translate-x-0" : "-translate-x-full md:hidden"
             )}>
+                {/* Noise Texture Overlay */}
+                <div className="absolute inset-0 pointer-events-none opacity-[0.03] mix-blend-overlay z-[-1]" style={{ backgroundImage: 'url("https://grainy-gradients.vercel.app/noise.svg")' }} />
                 <div className="p-4 flex items-center justify-between">
                     <button
                         onClick={onNewChat}

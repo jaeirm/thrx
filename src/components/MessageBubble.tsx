@@ -115,10 +115,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLog
                             <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 components={{
-                                    pre: ({ node, ...props }) => <div className="overflow-auto w-full my-2 bg-black/50 p-2 rounded-lg" {...props as any} />,
+                                    pre: ({ node, ...props }) => <div className="overflow-auto w-full my-3 bg-black/40 border border-white/5 p-4 rounded-xl shadow-sm" {...props as any} />,
                                     code: ({ node, className, children, ...props }) => {
-                                        return <code className={cn("bg-black/20 px-1 py-0.5 rounded text-sm", className)} {...props}>{children}</code>
+                                        return <code className={cn("bg-black/20 text-foreground/90 px-1.5 py-0.5 rounded-md text-[0.9em] font-mono border border-white/5", className)} {...props}>{children}</code>
                                     },
+                                    h1: ({ node, ...props }) => <h1 className="text-2xl font-bold mt-6 mb-4 text-foreground tracking-tight" {...props} />,
+                                    h2: ({ node, ...props }) => <h2 className="text-xl font-semibold mt-5 mb-3 text-foreground/90 border-b border-white/10 pb-2" {...props} />,
+                                    h3: ({ node, ...props }) => <h3 className="text-lg font-medium mt-4 mb-2 text-foreground/80" {...props} />,
+                                    h4: ({ node, ...props }) => <h4 className="text-base font-medium mt-3 mb-2 text-foreground/80" {...props} />,
+                                    p: ({ node, ...props }) => <p className="mb-4 leading-relaxed text-foreground/80" {...props} />,
+                                    ul: ({ node, ...props }) => <ul className="list-disc list-outside ml-5 mb-5 space-y-2 text-foreground/80 marker:text-foreground/40" {...props} />,
+                                    ol: ({ node, ...props }) => <ol className="list-decimal list-outside ml-5 mb-5 space-y-2 text-foreground/80 marker:text-foreground/40" {...props} />,
+                                    li: ({ node, ...props }) => <li className="pl-1 leading-relaxed" {...props} />,
+                                    strong: ({ node, ...props }) => <strong className="font-semibold text-foreground" {...props} />,
+                                    blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-white/20 pl-4 py-1 pr-4 my-5 bg-white/5 rounded-r-lg italic text-foreground/70" {...props} />,
+                                    table: ({ node, ...props }) => <div className="overflow-x-auto my-5 rounded-lg border border-white/10 bg-black/20"><table className="w-full border-collapse text-sm" {...props} /></div>,
+                                    th: ({ node, ...props }) => <th className="bg-white/5 border-b border-white/10 px-4 py-3 font-medium text-left text-foreground/90" {...props} />,
+                                    td: ({ node, ...props }) => <td className="border-b border-white/5 px-4 py-3 text-foreground/80" {...props} />,
+                                    hr: ({ node, ...props }) => <hr className="my-6 border-white/10" {...props} />,
                                     a: ({ node, href, children, ...props }) => {
                                         if (href?.startsWith('#branch-')) {
                                             const chatId = href.replace('#branch-', '');
@@ -137,7 +151,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onViewLog
                                                 </span>
                                             );
                                         }
-                                        return <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" {...props}>{children}</a>;
+                                        return <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:text-primary/80 hover:underline underline-offset-2 decoration-primary/50 transition-colors" {...props}>{children}</a>;
                                     }
                                 }}
                             >

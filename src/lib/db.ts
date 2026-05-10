@@ -8,10 +8,10 @@ const db = new Dexie('ChatDB') as Dexie & {
     documentChunks: EntityTable<DocumentChunk, 'id'>;
 };
 
-db.version(1).stores({
+db.version(2).stores({
     chats: 'id, created_at, parentId',
     messages: 'id, chat_id, created_at',
-    documents: 'id, parsedAt',
+    documents: 'id, parsedAt, isUniversal',
     documentChunks: 'id, documentId'
 });
 

@@ -71,3 +71,41 @@ async function parsePDF(file: File): Promise<string> {
     
     return text;
 }
+
+export async function extractStructuredData(file: File): Promise<any[] | null> {
+    const name = file.name.toLowerCase();
+
+    try {
+        if (name.endsWith('.csv') || file.type === 'text/csv') {
+            return new Promise((resolve) => {
+                Papa.parse(file, {
+                    header: true,
+                    dynamicTyping: true,
+                    skipEmptyLines: true,
+                    complete: (results) => {
+                        // Limit to 1000 rows for performance
+                        resolve(results.data.slice(0, 1000));
+                    },
+                    error: () => resolve(null)
+                });
+            });
+        } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+            const arrayBuffer = await file.arrayBuffer();
+            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+            if (workbook.SheetNames.length === 0) return null;
+            
+            // Just take the first sheet for visualization
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // Convert to JSON
+            const data = XLSX.utils.sheet_to_json(worksheet, { defval: null });
+            return data.slice(0, 1000) as any[];
+        }
+    } catch (error) {
+        console.error("Failed to extract structured data:", error);
+        return null;
+    }
+
+    return null;
+}

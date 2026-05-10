@@ -8,6 +8,29 @@ export const useLocalLLM = () => {
     const [logs, setLogs] = useState<string[]>([]);
     const [metrics, setMetrics] = useState<string>('');
     const engineRef = useRef<webllm.MLCEngineInterface | null>(null);
+    const currentModelIdRef = useRef<string | null>(null);
+    const idleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const isGeneratingRef = useRef<boolean>(false);
+
+    const resetIdleTimer = useCallback(() => {
+        if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
+        idleTimeoutRef.current = setTimeout(async () => {
+            if (engineRef.current && !isGeneratingRef.current) {
+                console.log("[WebLLM] Unloading model due to 2 minutes of inactivity...");
+                try {
+                    await engineRef.current.unload();
+                } catch (e) {
+                    console.warn("Unload error", e);
+                }
+                engineRef.current = null;
+                currentModelIdRef.current = null;
+                setLogs(prev => [...prev, "Model unloaded to conserve VRAM (idle)."]);
+            } else if (isGeneratingRef.current) {
+                // If generating, retry in 1 minute
+                resetIdleTimer();
+            }
+        }, 120000); // 2 minutes
+    }, []);
 
     const initEngine = useCallback(async (modelId: string) => {
         setIsModelLoading(true);
@@ -17,14 +40,7 @@ export const useLocalLLM = () => {
 
         try {
             if (!engineRef.current) {
-                // Create a new worker
-                const worker = new Worker(
-                    new URL('../workers/llm.worker.ts', import.meta.url),
-                    { type: 'module' }
-                );
-
-                engineRef.current = await webllm.CreateWebWorkerMLCEngine(
-                    worker,
+                engineRef.current = await webllm.CreateMLCEngine(
                     modelId,
                     {
                         initProgressCallback: (report) => {
@@ -37,13 +53,19 @@ export const useLocalLLM = () => {
                                 return prev;
                             });
                         }
+                    },
+                    {
+                        context_window_size: 32768
                     }
                 );
             } else {
                 // Reload model if engine exists
-                await engineRef.current.reload(modelId);
+                await engineRef.current.reload(modelId, {
+                    context_window_size: 32768
+                });
             }
 
+            currentModelIdRef.current = modelId;
             return engineRef.current;
         } catch (error) {
             console.error("Failed to load local model:", error);
@@ -58,26 +80,26 @@ export const useLocalLLM = () => {
             throw error;
         } finally {
             setIsModelLoading(false);
+            resetIdleTimer();
         }
-    }, []);
+    }, [resetIdleTimer]);
 
     const generate = useCallback(async (messages: any[], modelId: string, onUpdate: (text: string) => void) => {
         let engine = engineRef.current;
 
-        if (!engine) {
+        if (!engine || currentModelIdRef.current !== modelId) {
             engine = await initEngine(modelId);
         }
 
         if (!engine) throw new Error("Engine initialization failed");
 
         try {
-            // Map our messages to WebLLM format if needed, but for now we expect the caller to pass compatible structure
-            // or we map it here. Let's map it here to be safe and flexible.
             const chatMessages: webllm.ChatCompletionMessageParam[] = messages.map(msg => ({
                 role: msg.role as "user" | "assistant" | "system",
                 content: msg.content
             }));
 
+            isGeneratingRef.current = true;
             const reply = await engine.chat.completions.create({
                 messages: chatMessages,
                 stream: true,
@@ -106,8 +128,11 @@ export const useLocalLLM = () => {
         } catch (err) {
             console.error("Generation failed", err);
             throw err;
+        } finally {
+            isGeneratingRef.current = false;
+            resetIdleTimer();
         }
-    }, [initEngine]);
+    }, [initEngine, resetIdleTimer]);
 
     const interrupt = useCallback(async () => {
         const engine = engineRef.current;
@@ -117,6 +142,13 @@ export const useLocalLLM = () => {
         }
     }, []);
 
+    const getEngine = useCallback(async (modelId: string) => {
+        if (!engineRef.current || currentModelIdRef.current !== modelId) {
+            return await initEngine(modelId);
+        }
+        return engineRef.current;
+    }, [initEngine]);
+
     return {
         isModelLoading,
         progress,
@@ -125,6 +157,7 @@ export const useLocalLLM = () => {
         metrics,
         loadModel: initEngine,
         generate,
-        interrupt
+        interrupt,
+        getEngine
     };
 };

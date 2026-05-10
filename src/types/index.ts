@@ -5,7 +5,9 @@ export interface Attachment {
     url: string; // Base64 data URI or reference
     type: 'image' | 'file' | 'audio';
     name: string;
+    size?: number; // File size in bytes
     isRagDocument?: boolean; // Indicates if it has been embedded
+    structuredData?: any[]; // For chart rendering
 }
 
 export interface Message {
@@ -35,6 +37,7 @@ export interface DocumentMeta {
     name: string;
     type: string;
     parsedAt: string;
+    isUniversal?: boolean;
 }
 
 export interface DocumentChunk {

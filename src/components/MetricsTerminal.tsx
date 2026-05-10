@@ -7,9 +7,10 @@ interface MetricsTerminalProps {
     logs: string[];
     modelId: ModelType;
     metrics: string; // "prefill: 10 tok/s, decode: 20 tok/s" etc.
+    tokenCount?: number;
 }
 
-export const MetricsTerminal: React.FC<MetricsTerminalProps> = ({ logs, modelId, metrics }) => {
+export const MetricsTerminal: React.FC<MetricsTerminalProps> = ({ logs, modelId, metrics, tokenCount = 0 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -47,9 +48,9 @@ export const MetricsTerminal: React.FC<MetricsTerminalProps> = ({ logs, modelId,
                             <Activity size={12} className={metrics ? "text-green-400 animate-pulse" : "text-gray-500"} />
                             {metrics || "Idle"}
                         </div>
-                        <div className="flex items-center gap-1.5" title="Local RAG Cost (100% Free)">
-                            <DollarSign size={12} className="text-emerald-400" />
-                            $0.00
+                        <div className="flex items-center gap-1.5" title="Input Message Context Size">
+                            <Database size={12} className="text-emerald-400" />
+                            {tokenCount} Tokens
                         </div>
                     </div>
                 </div>

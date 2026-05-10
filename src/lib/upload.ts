@@ -1,30 +1,44 @@
 import { Attachment } from '@/types';
 import { processAndStoreDocument } from './ragEngine';
+import { extractStructuredData } from './documentParser';
 
-export const uploadFile = async (file: File, onProgress?: (msg: string) => void): Promise<Attachment> => {
+export const uploadFile = async (file: File, onProgress?: (msg: string) => void, skipRag = false): Promise<Attachment> => {
     try {
+        const name = file.name.toLowerCase();
         const isRagSupported = file.type === 'application/pdf' || 
                                file.type === 'text/csv' || 
-                               file.name.endsWith('.pdf') || 
-                               file.name.endsWith('.csv') || 
-                               file.name.endsWith('.xlsx') || 
-                               file.name.endsWith('.xls') || 
+                               name.endsWith('.pdf') || 
+                               name.endsWith('.csv') || 
+                               name.endsWith('.xlsx') || 
+                               name.endsWith('.xls') || 
                                file.type.startsWith('text/') || 
-                               file.name.endsWith('.txt');
+                               name.endsWith('.txt');
 
         if (isRagSupported) {
-            // Process for RAG
-            const docId = await processAndStoreDocument(file, onProgress);
+            // Process for RAG (Mark as non-universal if skipRag is true)
+            const docId = await processAndStoreDocument(file, onProgress, !skipRag);
+            
+            let structuredData = undefined;
+            if (name.endsWith('.csv') || name.endsWith('.xlsx') || name.endsWith('.xls') || file.type === 'text/csv') {
+                try {
+                    const data = await extractStructuredData(file);
+                    if (data && data.length > 0) structuredData = data;
+                } catch (e) {
+                    console.error("Failed to extract structured data", e);
+                }
+            }
             
             return {
                 id: docId,
-                url: '', // No need to store whole file in base64 if it's in DB chunks
+                url: '', 
                 type: 'file',
                 name: file.name,
-                isRagDocument: true
+                size: file.size,
+                isRagDocument: true, // It is still a RAG doc, just maybe not universal
+                structuredData
             };
         } else {
-            // Standard Base64 approach for Images/Audio
+            // Standard Base64 approach for Images/Audio (Always chat-specific)
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => {
@@ -34,7 +48,10 @@ export const uploadFile = async (file: File, onProgress?: (msg: string) => void)
                         url: base64String,
                         type: file.type.startsWith('image/') ? 'image' :
                               file.type.startsWith('audio/') ? 'audio' : 'file',
-                        name: file.name
+                        name: file.name,
+                        size: file.size,
+                        isRagDocument: false,
+                        structuredData: undefined
                     });
                 };
                 reader.onerror = (error) => {
